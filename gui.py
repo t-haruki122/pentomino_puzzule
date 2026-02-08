@@ -20,8 +20,8 @@ class PentominoPuzzleGUI:
         # Data storage
         self.table_size = tk.IntVar(value=5)
         self.materials = []  # List of Material objects
-        self.xans = []
-        self.yans = []
+        self.xans_vars = []  # List of IntVar for X constraints
+        self.yans_vars = []  # List of IntVar for Y constraints
         self.initial_board = None
         self.canvas_widget = None
         
@@ -80,13 +80,15 @@ class PentominoPuzzleGUI:
         constraint_frame = ttk.LabelFrame(parent, text="Constraints", padding="10")
         constraint_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
         
-        ttk.Label(constraint_frame, text="X Sums (comma-separated):").grid(row=0, column=0, sticky=tk.W)
-        self.xans_entry = ttk.Entry(constraint_frame, width=30)
-        self.xans_entry.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=2)
+        ttk.Label(constraint_frame, text="X Sums (wheel/drag to adjust):", 
+                 font=('Arial', 9)).grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.xans_frame = ttk.Frame(constraint_frame)
+        self.xans_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
         
-        ttk.Label(constraint_frame, text="Y Sums (comma-separated):").grid(row=2, column=0, sticky=tk.W)
-        self.yans_entry = ttk.Entry(constraint_frame, width=30)
-        self.yans_entry.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=2)
+        ttk.Label(constraint_frame, text="Y Sums (wheel/drag to adjust):", 
+                 font=('Arial', 9)).grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.yans_frame = ttk.Frame(constraint_frame)
+        self.yans_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
         
         # Initial Board State
         board_frame = ttk.LabelFrame(parent, text="Initial Board State", padding="10")
@@ -135,9 +137,8 @@ class PentominoPuzzleGUI:
         self.initial_board = [[0 for _ in range(n)] for _ in range(n)]
         self.draw_board()
         
-        # Update constraint entries with default values
-        self.xans_entry.delete(0, tk.END)
-        self.yans_entry.delete(0, tk.END)
+        # Update constraint spinboxes
+        self.update_constraint_spinboxes()
     
     def draw_board(self):
         """Draw the initial board state grid"""
@@ -172,6 +173,123 @@ class PentominoPuzzleGUI:
                     self.board_canvas.create_text((x1 + x2) // 2, (y1 + y2) // 2, 
                                                  text=str(val), fill=text_color, 
                                                  font=('Arial', 10, 'bold'))
+    
+    def update_constraint_spinboxes(self):
+        """Update constraint controls based on table size"""
+        n = self.table_size.get()
+        
+        # Clear existing widgets
+        for widget in self.xans_frame.winfo_children():
+            widget.destroy()
+        for widget in self.yans_frame.winfo_children():
+            widget.destroy()
+        
+        # Clear and recreate IntVar lists
+        self.xans_vars = []
+        self.yans_vars = []
+        
+        # Create X constraint controls (horizontal layout)
+        for i in range(n):
+            var = tk.IntVar(value=0)
+            self.xans_vars.append(var)
+            
+            # Container frame for each control
+            control_frame = ttk.Frame(self.xans_frame)
+            control_frame.grid(row=0, column=i, padx=5, pady=2)
+            
+            # Label for index
+            ttk.Label(control_frame, text=f"X{i}", font=('Arial', 9, 'bold')).pack()
+            
+            # Interactive value display
+            value_label = tk.Label(control_frame, textvariable=var, 
+                                  font=('Arial', 14, 'bold'), 
+                                  bg='#E3F2FD', fg='#1976D2',
+                                  width=4, height=1, relief=tk.RAISED, bd=2,
+                                  cursor='hand2')
+            value_label.pack(pady=2)
+            
+            # Bind mouse events
+            self._bind_interactive_events(value_label, var, n*n)
+        
+        # Create Y constraint controls (horizontal layout)
+        for i in range(n):
+            var = tk.IntVar(value=0)
+            self.yans_vars.append(var)
+            
+            # Container frame for each control
+            control_frame = ttk.Frame(self.yans_frame)
+            control_frame.grid(row=0, column=i, padx=5, pady=2)
+            
+            # Label for index
+            ttk.Label(control_frame, text=f"Y{i}", font=('Arial', 9, 'bold')).pack()
+            
+            # Interactive value display
+            value_label = tk.Label(control_frame, textvariable=var, 
+                                  font=('Arial', 14, 'bold'), 
+                                  bg='#E8F5E9', fg='#388E3C',
+                                  width=4, height=1, relief=tk.RAISED, bd=2,
+                                  cursor='hand2')
+            value_label.pack(pady=2)
+            
+            # Bind mouse events
+            self._bind_interactive_events(value_label, var, n*n)
+    
+    def _bind_interactive_events(self, widget, var, max_val):
+        """Bind mouse wheel and drag events to a widget"""
+        # Mouse wheel support
+        def on_wheel(event):
+            current = var.get()
+            if event.delta > 0:  # Scroll up
+                new_val = min(current + 1, max_val)
+            else:  # Scroll down
+                new_val = max(current - 1, 0)
+            var.set(new_val)
+        
+        widget.bind("<MouseWheel>", on_wheel)
+        
+        # Drag support
+        drag_data = {'y': 0, 'start_val': 0}
+        
+        def on_drag_start(event):
+            drag_data['y'] = event.y
+            drag_data['start_val'] = var.get()
+            widget.config(bg='#FFEB3B', relief=tk.SUNKEN)  # Yellow highlight during drag
+        
+        def on_drag_motion(event):
+            delta_y = drag_data['y'] - event.y  # Inverted: up = positive
+            steps = delta_y // 10  # 10 pixels per step
+            new_val = drag_data['start_val'] + steps
+            new_val = max(0, min(new_val, max_val))
+            var.set(new_val)
+        
+        def on_drag_end(event):
+            # Restore original color based on which constraint this is
+            if var in self.xans_vars:
+                widget.config(bg='#E3F2FD', relief=tk.RAISED)
+            else:
+                widget.config(bg='#E8F5E9', relief=tk.RAISED)
+        
+        widget.bind("<Button-1>", on_drag_start)
+        widget.bind("<B1-Motion>", on_drag_motion)
+        widget.bind("<ButtonRelease-1>", on_drag_end)
+        
+        # Hover effect
+        def on_enter(event):
+            if var in self.xans_vars:
+                widget.config(bg='#BBDEFB')  # Lighter blue
+            else:
+                widget.config(bg='#C8E6C9')  # Lighter green
+        
+        def on_leave(event):
+            if var in self.xans_vars:
+                widget.config(bg='#E3F2FD')  # Original blue
+            else:
+                widget.config(bg='#E8F5E9')  # Original green
+        
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
+
+
     
     def on_board_click(self, event):
         """Handle clicks on the board canvas"""
@@ -280,12 +398,15 @@ class PentominoPuzzleGUI:
         ]
         self.update_material_list()
         
-        # Example constraints
-        self.xans_entry.delete(0, tk.END)
-        self.xans_entry.insert(0, "5, 4, 3, 2, 1")
+        # Example constraints - set spinbox values
+        example_xans = [5, 4, 3, 2, 1]
+        example_yans = [5, 4, 3, 2, 1]
         
-        self.yans_entry.delete(0, tk.END)
-        self.yans_entry.insert(0, "5, 4, 3, 2, 1")
+        for i, val in enumerate(example_xans):
+            self.xans_vars[i].set(val)
+        
+        for i, val in enumerate(example_yans):
+            self.yans_vars[i].set(val)
         
         messagebox.showinfo("Success", "Example loaded successfully!")
     
@@ -298,9 +419,10 @@ class PentominoPuzzleGUI:
                 self.canvas_widget.get_tk_widget().destroy()
                 self.canvas_widget = None
             
-            # Parse constraints
-            xans = self.parse_constraint(self.xans_entry.get())
-            yans = self.parse_constraint(self.yans_entry.get())
+            
+            # Get constraints from spinboxes
+            xans = [var.get() for var in self.xans_vars]
+            yans = [var.get() for var in self.yans_vars]
             
             n = self.table_size.get()
             
