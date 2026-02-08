@@ -251,8 +251,11 @@ class Table:
 
             # --- ここで可視化を呼び出し ---
             # self.visualize(xans, yans)
+            return self
         else:
             print("No solution found.")
+            return None
+
 
 
 class Material:

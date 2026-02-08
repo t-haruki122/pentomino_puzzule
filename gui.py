@@ -15,14 +15,21 @@ class PentominoPuzzleGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Pentomino Puzzle Solver")
-        self.root.geometry("1400x800")
+        self.root.geometry("900x750")
         
         # Data storage
         self.table_size = tk.IntVar(value=5)
         self.materials = []  # List of Material objects
-        self.xans_vars = []  # List of IntVar for X constraints
-        self.yans_vars = []  # List of IntVar for Y constraints
-        self.initial_board = None
+        self.xans = []  # X constraints
+        self.yans = []  # Y constraints
+        self.initial_board = []  # Initial board state
+        self.solution_board = None  # Solution board
+        self.mode = tk.StringVar(value='edit')  # 'edit' or 'result'
+        
+        # Grid buttons
+        self.grid_buttons = {}  # {(row, col): button}
+        self.constraint_buttons = {}  # {'x0': button, 'y0': button, ...}
+        
         self.canvas_widget = None
         
         self.setup_ui()
@@ -35,375 +42,305 @@ class PentominoPuzzleGUI:
         
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
         
-        # Left panel - Input controls
-        left_panel = ttk.Frame(main_frame, padding="5")
-        left_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Top panel - Controls
+        top_panel = ttk.Frame(main_frame, padding="5")
+        top_panel.grid(row=0, column=0, sticky=(tk.W, tk.E))
         
-        # Right panel - Visualization
-        right_panel = ttk.Frame(main_frame, padding="5")
-        right_panel.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
-        right_panel.columnconfigure(0, weight=1)
-        right_panel.rowconfigure(1, weight=1)
+        # Grid panel - Interactive grid
+        grid_panel = ttk.Frame(main_frame, padding="5")
+        grid_panel.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        self.setup_left_panel(left_panel)
-        self.setup_right_panel(right_panel)
+        # Bottom panel - Log
+        bottom_panel = ttk.Frame(main_frame, padding="5")
+        bottom_panel.grid(row=2, column=0, sticky=(tk.W, tk.E))
+        
+        self.setup_top_panel(top_panel)
+        self.setup_grid_panel(grid_panel)
+        self.setup_bottom_panel(bottom_panel)
     
-    def setup_left_panel(self, parent):
-        # Table Size
-        size_frame = ttk.LabelFrame(parent, text="Table Size", padding="10")
-        size_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
+    def setup_top_panel(self, parent):
+        # Left side - Materials and controls
+        left_frame = ttk.Frame(parent)
+        left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E))
         
-        ttk.Label(size_frame, text="Size (NxN):").grid(row=0, column=0, sticky=tk.W)
-        size_spinbox = ttk.Spinbox(size_frame, from_=3, to=10, textvariable=self.table_size, 
-                                   width=10, command=self.update_board_size)
-        size_spinbox.grid(row=0, column=1, sticky=tk.W, padx=5)
+        # Table Size
+        ttk.Label(left_frame, text="Size:").grid(row=0, column=0, padx=5)
+        size_spinbox = ttk.Spinbox(left_frame, from_=3, to=10, textvariable=self.table_size, 
+                                   width=5, command=self.update_board_size)
+        size_spinbox.grid(row=0, column=1, padx=5)
         
         # Materials
-        mat_frame = ttk.LabelFrame(parent, text="Materials", padding="10")
-        mat_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        parent.rowconfigure(1, weight=1)
+        ttk.Label(left_frame, text="Materials:").grid(row=0, column=2, padx=5)
+        self.mat_listbox = tk.Listbox(left_frame, height=3, width=30)
+        self.mat_listbox.grid(row=0, column=3, padx=5)
         
-        # Material list
-        self.mat_listbox = tk.Listbox(mat_frame, height=8)
-        self.mat_listbox.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        mat_frame.rowconfigure(0, weight=1)
-        mat_frame.columnconfigure(0, weight=1)
+        ttk.Button(left_frame, text="Add", command=self.add_material, width=6).grid(row=0, column=4, padx=2)
+        ttk.Button(left_frame, text="Edit", command=self.edit_material, width=6).grid(row=0, column=5, padx=2)
+        ttk.Button(left_frame, text="Del", command=self.delete_material, width=6).grid(row=0, column=6, padx=2)
         
-        ttk.Button(mat_frame, text="Add", command=self.add_material).grid(row=1, column=0, padx=2)
-        ttk.Button(mat_frame, text="Edit", command=self.edit_material).grid(row=1, column=1, padx=2)
-        ttk.Button(mat_frame, text="Delete", command=self.delete_material).grid(row=1, column=2, padx=2)
+        # Right side - Action buttons
+        right_frame = ttk.Frame(parent)
+        right_frame.grid(row=0, column=1, sticky=(tk.E))
+        parent.columnconfigure(1, weight=1)
         
-        # Constraints (xans, yans)
-        constraint_frame = ttk.LabelFrame(parent, text="Constraints", padding="10")
-        constraint_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
+        ttk.Button(right_frame, text="Load Example", command=self.load_example).grid(row=0, column=0, padx=5)
+        ttk.Button(right_frame, text="Clear Board", command=self.clear_board).grid(row=0, column=1, padx=5)
+        ttk.Button(right_frame, text="Clear Solution", command=self.clear_solution).grid(row=0, column=2, padx=5)
         
-        ttk.Label(constraint_frame, text="X Sums (wheel/drag to adjust):", 
-                 font=('Arial', 9)).grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.xans_frame = ttk.Frame(constraint_frame)
-        self.xans_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        # Mode toggle
+        ttk.Label(right_frame, text="Mode:").grid(row=0, column=3, padx=5)
+        mode_edit = ttk.Radiobutton(right_frame, text="Edit", variable=self.mode, value='edit', 
+                                    command=self.update_grid_display)
+        mode_edit.grid(row=0, column=4, padx=2)
+        mode_result = ttk.Radiobutton(right_frame, text="Result", variable=self.mode, value='result',
+                                      command=self.update_grid_display)
+        mode_result.grid(row=0, column=5, padx=2)
         
-        ttk.Label(constraint_frame, text="Y Sums (wheel/drag to adjust):", 
-                 font=('Arial', 9)).grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.yans_frame = ttk.Frame(constraint_frame)
-        self.yans_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        # Initial Board State
-        board_frame = ttk.LabelFrame(parent, text="Initial Board State", padding="10")
-        board_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        ttk.Label(board_frame, text="Click cells: 0→1→-1→0").grid(row=0, column=0, sticky=tk.W)
-        
-        self.board_canvas = tk.Canvas(board_frame, width=250, height=250, bg='white')
-        self.board_canvas.grid(row=1, column=0, pady=5)
-        self.board_canvas.bind("<Button-1>", self.on_board_click)
-        
-        # Solve button
-        solve_btn = ttk.Button(parent, text="Solve Puzzle", command=self.solve_puzzle, 
-                              style='Accent.TButton')
-        solve_btn.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=10)
-        
-        # Load example button
-        example_btn = ttk.Button(parent, text="Load Example", command=self.load_example)
-        example_btn.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=5)
+        ttk.Button(right_frame, text="Solve Puzzle", command=self.solve_puzzle, 
+                  style='Accent.TButton').grid(row=0, column=6, padx=5)
     
-    def setup_right_panel(self, parent):
-        # Progress log
-        log_frame = ttk.LabelFrame(parent, text="Solver Progress", padding="5")
-        log_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        parent.rowconfigure(0, weight=0)
-        
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=10, width=60)
-        self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        log_frame.rowconfigure(0, weight=1)
-        log_frame.columnconfigure(0, weight=1)
-        
-        # Visualization area
-        viz_frame = ttk.LabelFrame(parent, text="Puzzle Solution", padding="5")
-        viz_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        viz_frame.rowconfigure(0, weight=1)
-        viz_frame.columnconfigure(0, weight=1)
-        
-        self.viz_container = ttk.Frame(viz_frame)
-        self.viz_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.viz_container.rowconfigure(0, weight=1)
-        self.viz_container.columnconfigure(0, weight=1)
+    def setup_grid_panel(self, parent):
+        # Create frame for grid
+        self.grid_frame = ttk.Frame(parent)
+        self.grid_frame.pack(expand=True)
     
-    def update_board_size(self):
-        """Update board when size changes"""
+    def setup_bottom_panel(self, parent):
+        # Log output
+        log_label = ttk.Label(parent, text="Console Log:")
+        log_label.grid(row=0, column=0, sticky=tk.W)
+        
+        self.log_text = scrolledtext.ScrolledText(parent, height=8, width=100, wrap=tk.WORD)
+        self.log_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        parent.columnconfigure(0, weight=1)
+    
+    def create_grid(self):
+        # Clear existing grid
+        for widget in self.grid_frame.winfo_children():
+            widget.destroy()
+        
+        self.grid_buttons.clear()
+        self.constraint_buttons.clear()
+        
         n = self.table_size.get()
-        self.initial_board = [[0 for _ in range(n)] for _ in range(n)]
-        self.draw_board()
         
-        # Update constraint spinboxes
-        self.update_constraint_spinboxes()
-    
-    def draw_board(self):
-        """Draw the initial board state grid"""
-        self.board_canvas.delete("all")
-        n = self.table_size.get()
-        cell_size = 250 // n
+        # Calculate button size
+        btn_size = min(50, 500 // (n + 1))
         
+        # Corner (empty)
+        corner = tk.Label(self.grid_frame, text="", width=btn_size//7, height=btn_size//14, 
+                         relief=tk.FLAT, bg='#f0f0f0')
+        corner.grid(row=0, column=0, padx=1, pady=1)
+        
+        # X constraints (top row)
+        for c in range(n):
+            btn = tk.Button(self.grid_frame, text=str(self.xans[c]), 
+                           width=btn_size//7, height=btn_size//14,
+                           bg='#E3F2FD', fg='#1976D2', font=('Arial', 10, 'bold'),
+                           relief=tk.RAISED, bd=2)
+            btn.grid(row=0, column=c+1, padx=1, pady=1)
+            
+            # Bind events
+            self.setup_constraint_events(btn, c, 'x')
+            self.constraint_buttons[f'x{c}'] = btn
+        
+        # Y constraints (left column) and grid cells
         for r in range(n):
+            # Y constraint
+            btn = tk.Button(self.grid_frame, text=str(self.yans[r]), 
+                           width=btn_size//7, height=btn_size//14,
+                           bg='#E8F5E9', fg='#388E3C', font=('Arial', 10, 'bold'),
+                           relief=tk.RAISED, bd=2)
+            btn.grid(row=r+1, column=0, padx=1, pady=1)
+            
+            # Bind events
+            self.setup_constraint_events(btn, r, 'y')
+            self.constraint_buttons[f'y{r}'] = btn
+            
+            # Grid cells
             for c in range(n):
-                x1 = c * cell_size
-                y1 = r * cell_size
-                x2 = x1 + cell_size
-                y2 = y1 + cell_size
+                cell_btn = tk.Button(self.grid_frame, text="", 
+                                    width=btn_size//7, height=btn_size//14,
+                                    bg='white', font=('Arial', 9),
+                                    relief=tk.RAISED, bd=2)
+                cell_btn.grid(row=r+1, column=c+1, padx=1, pady=1)
                 
-                val = self.initial_board[r][c]
+                # Bind events
+                cell_btn.bind('<Button-1>', lambda e, row=r, col=c: self.on_cell_click(row, col))
                 
-                # Color based on value
-                if val == 0:
-                    color = 'white'
-                elif val == 1:
-                    color = '#333333'
-                elif val == -1:
-                    color = '#D3D3D3'
-                else:
-                    color = 'white'
-                
-                self.board_canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline='black')
-                
-                # Draw value
-                if val != 0:
-                    text_color = 'white' if val == 1 else 'black'
-                    self.board_canvas.create_text((x1 + x2) // 2, (y1 + y2) // 2, 
-                                                 text=str(val), fill=text_color, 
-                                                 font=('Arial', 10, 'bold'))
+                self.grid_buttons[(r, c)] = cell_btn
+        
+        self.update_grid_display()
     
-    def update_constraint_spinboxes(self):
-        """Update constraint controls based on table size"""
+    def setup_constraint_events(self, button, index, constraint_type):
         n = self.table_size.get()
+        max_val = n * n
+        constraints = self.xans if constraint_type == 'x' else self.yans
         
-        # Clear existing widgets
-        for widget in self.xans_frame.winfo_children():
-            widget.destroy()
-        for widget in self.yans_frame.winfo_children():
-            widget.destroy()
-        
-        # Clear and recreate IntVar lists
-        self.xans_vars = []
-        self.yans_vars = []
-        
-        # Create X constraint controls (horizontal layout)
-        for i in range(n):
-            var = tk.IntVar(value=0)
-            self.xans_vars.append(var)
-            
-            # Container frame for each control
-            control_frame = ttk.Frame(self.xans_frame)
-            control_frame.grid(row=0, column=i, padx=5, pady=2)
-            
-            # Label for index
-            ttk.Label(control_frame, text=f"X{i}", font=('Arial', 9, 'bold')).pack()
-            
-            # Interactive value display
-            value_label = tk.Label(control_frame, textvariable=var, 
-                                  font=('Arial', 14, 'bold'), 
-                                  bg='#E3F2FD', fg='#1976D2',
-                                  width=4, height=1, relief=tk.RAISED, bd=2,
-                                  cursor='hand2')
-            value_label.pack(pady=2)
-            
-            # Bind mouse events
-            self._bind_interactive_events(value_label, var, n*n)
-        
-        # Create Y constraint controls (horizontal layout)
-        for i in range(n):
-            var = tk.IntVar(value=0)
-            self.yans_vars.append(var)
-            
-            # Container frame for each control
-            control_frame = ttk.Frame(self.yans_frame)
-            control_frame.grid(row=0, column=i, padx=5, pady=2)
-            
-            # Label for index
-            ttk.Label(control_frame, text=f"Y{i}", font=('Arial', 9, 'bold')).pack()
-            
-            # Interactive value display
-            value_label = tk.Label(control_frame, textvariable=var, 
-                                  font=('Arial', 14, 'bold'), 
-                                  bg='#E8F5E9', fg='#388E3C',
-                                  width=4, height=1, relief=tk.RAISED, bd=2,
-                                  cursor='hand2')
-            value_label.pack(pady=2)
-            
-            # Bind mouse events
-            self._bind_interactive_events(value_label, var, n*n)
-    
-    def _bind_interactive_events(self, widget, var, max_val):
-        """Bind mouse wheel and drag events to a widget"""
-        # Mouse wheel support
-        def on_wheel(event):
-            current = var.get()
-            if event.delta > 0:  # Scroll up
-                new_val = min(current + 1, max_val)
-            else:  # Scroll down
-                new_val = max(current - 1, 0)
-            var.set(new_val)
-        
-        widget.bind("<MouseWheel>", on_wheel)
-        
-        # Drag support with click detection
         drag_data = {'y': 0, 'start_val': 0, 'dragged': False}
         
+        # Mouse wheel
+        def on_wheel(event):
+            delta = -1 if event.delta > 0 else 1
+            new_val = max(0, min(constraints[index] + delta, max_val))
+            constraints[index] = new_val
+            button.config(text=str(new_val))
+        
+        button.bind('<MouseWheel>', on_wheel)
+        
+        # Drag
         def on_drag_start(event):
             drag_data['y'] = event.y
-            drag_data['start_val'] = var.get()
+            drag_data['start_val'] = constraints[index]
             drag_data['dragged'] = False
-            widget.config(bg='#FFEB3B', relief=tk.SUNKEN)  # Yellow highlight during drag
+            button.config(bg='#FFEB3B')
         
         def on_drag_motion(event):
-            # If mouse moved more than 3 pixels, it's a drag
             if abs(event.y - drag_data['y']) > 3:
                 drag_data['dragged'] = True
-                delta_y = drag_data['y'] - event.y  # Inverted: up = positive
-                steps = delta_y // 10  # 10 pixels per step
-                new_val = drag_data['start_val'] + steps
-                new_val = max(0, min(new_val, max_val))
-                var.set(new_val)
+                delta_y = drag_data['y'] - event.y
+                steps = delta_y // 10
+                new_val = max(0, min(drag_data['start_val'] + steps, max_val))
+                constraints[index] = new_val
+                button.config(text=str(new_val))
         
         def on_drag_end(event):
-            # Restore original color based on which constraint this is
-            if var in self.xans_vars:
-                widget.config(bg='#E3F2FD', relief=tk.RAISED)
+            # Restore color
+            if constraint_type == 'x':
+                button.config(bg='#E3F2FD')
             else:
-                widget.config(bg='#E8F5E9', relief=tk.RAISED)
+                button.config(bg='#E8F5E9')
             
-            # If not dragged, it's a click - increment value
+            # If not dragged, it's a click - increment
             if not drag_data['dragged']:
-                current = var.get()
-                if current < max_val:
-                    var.set(current + 1)
+                new_val = min(constraints[index] + 1, max_val)
+                constraints[index] = new_val
+                button.config(text=str(new_val))
         
         # Right-click to decrement
         def on_right_click(event):
-            current = var.get()
-            if current > 0:
-                var.set(current - 1)
+            new_val = max(constraints[index] - 1, 0)
+            constraints[index] = new_val
+            button.config(text=str(new_val))
         
-        widget.bind("<Button-1>", on_drag_start)
-        widget.bind("<B1-Motion>", on_drag_motion)
-        widget.bind("<ButtonRelease-1>", on_drag_end)
-        widget.bind("<Button-3>", on_right_click)  # Right-click
-
-        
-        # Hover effect
-        def on_enter(event):
-            if var in self.xans_vars:
-                widget.config(bg='#BBDEFB')  # Lighter blue
-            else:
-                widget.config(bg='#C8E6C9')  # Lighter green
-        
-        def on_leave(event):
-            if var in self.xans_vars:
-                widget.config(bg='#E3F2FD')  # Original blue
-            else:
-                widget.config(bg='#E8F5E9')  # Original green
-        
-        widget.bind("<Enter>", on_enter)
-        widget.bind("<Leave>", on_leave)
-
-
+        button.bind('<Button-1>', on_drag_start)
+        button.bind('<B1-Motion>', on_drag_motion)
+        button.bind('<ButtonRelease-1>', on_drag_end)
+        button.bind('<Button-3>', on_right_click)
     
-    def on_board_click(self, event):
-        """Handle clicks on the board canvas"""
+    def on_cell_click(self, row, col):
+        if self.mode.get() == 'edit':
+            # Cycle: 0 -> 1 -> -1 -> 0
+            current = self.initial_board[row][col]
+            new_val = 1 if current == 0 else (-1 if current == 1 else 0)
+            self.initial_board[row][col] = new_val
+            self.update_cell_display(row, col)
+    
+    def update_cell_display(self, row, col):
+        button = self.grid_buttons[(row, col)]
+        
+        if self.mode.get() == 'edit':
+            # Edit mode - show initial board state
+            val = self.initial_board[row][col]
+            if val == 0:
+                button.config(text="", bg='white', fg='black')
+            elif val == 1:
+                button.config(text="1", bg='#333333', fg='white')
+            elif val == -1:
+                button.config(text="X", bg='#D3D3D3', fg='black')
+        else:
+            # Result mode - show solution
+            if self.solution_board:
+                val = self.solution_board[row][col]
+                if val == 0:
+                    button.config(text="", bg='white', fg='black')
+                elif val == -1:
+                    button.config(text="X", bg='#D3D3D3', fg='black')
+                else:
+                    # Color by material
+                    colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+                             '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b',
+                             '#27ae60', '#2980b9', '#8e44ad', '#f1c40f', '#d35400']
+                    color = colors[val % len(colors)]
+                    button.config(text=str(val), bg=color, fg='white', font=('Arial', 9, 'bold'))
+            else:
+                button.config(text="", bg='white', fg='black')
+    
+    def update_grid_display(self):
         n = self.table_size.get()
-        cell_size = 250 // n
-        
-        c = event.x // cell_size
-        r = event.y // cell_size
-        
-        if 0 <= r < n and 0 <= c < n:
-            # Cycle through 0 -> 1 -> -1 -> 0
-            current = self.initial_board[r][c]
-            if current == 0:
-                self.initial_board[r][c] = 1
-            elif current == 1:
-                self.initial_board[r][c] = -1
-            else:
-                self.initial_board[r][c] = 0
-            
-            self.draw_board()
+        for r in range(n):
+            for c in range(n):
+                self.update_cell_display(r, c)
     
+    def update_board_size(self):
+        n = self.table_size.get()
+        old_n = len(self.initial_board) if self.initial_board else 0
+        
+        # Update constraints
+        self.xans = [0] * n
+        self.yans = [0] * n
+        
+        # Preserve initial board if possible, otherwise create new
+        if old_n == n:
+            # Keep existing board
+            pass
+        else:
+            # Create new board, preserving what we can
+            new_board = [[0 for _ in range(n)] for _ in range(n)]
+            if old_n > 0:
+                # Copy old values
+                for r in range(min(old_n, n)):
+                    for c in range(min(old_n, n)):
+                        new_board[r][c] = self.initial_board[r][c]
+            self.initial_board = new_board
+        
+        # Reset solution
+        self.solution_board = None
+        
+        # Recreate grid
+        self.create_grid()
+    
+    # Material management methods (keep existing implementation)
     def add_material(self):
-        """Add a new material"""
-        dialog = MaterialDialog(self.root, "Add Material")
-        if dialog.result:
-            try:
-                mat = Material(dialog.result)
-                self.materials.append(mat)
-                self.update_material_list()
-            except Exception as e:
-                messagebox.showerror("Error", f"Invalid material format: {e}")
+        MaterialEditorDialog(self.root, None, self.on_material_saved)
     
     def edit_material(self):
-        """Edit selected material"""
         selection = self.mat_listbox.curselection()
         if not selection:
-            messagebox.showwarning("Warning", "Please select a material to edit")
+            messagebox.showwarning("No Selection", "Please select a material to edit")
             return
         
-        idx = selection[0]
-        current_mat = self.materials[idx]
-        
-        dialog = MaterialDialog(self.root, "Edit Material", current_mat.positions)
-        if dialog.result:
-            try:
-                self.materials[idx] = Material(dialog.result)
-                self.update_material_list()
-            except Exception as e:
-                messagebox.showerror("Error", f"Invalid material format: {e}")
+        index = selection[0]
+        material = self.materials[index]
+        MaterialEditorDialog(self.root, material, lambda m: self.on_material_edited(index, m))
     
     def delete_material(self):
-        """Delete selected material"""
         selection = self.mat_listbox.curselection()
         if not selection:
-            messagebox.showwarning("Warning", "Please select a material to delete")
+            messagebox.showwarning("No Selection", "Please select a material to delete")
             return
         
-        idx = selection[0]
-        del self.materials[idx]
+        index = selection[0]
+        if messagebox.askyesno("Confirm Delete", f"Delete material {index}?"):
+            del self.materials[index]
+            self.update_material_list()
+    
+    def on_material_saved(self, material):
+        self.materials.append(material)
+        self.update_material_list()
+    
+    def on_material_edited(self, index, material):
+        self.materials[index] = material
         self.update_material_list()
     
     def update_material_list(self):
-        """Update the material listbox"""
         self.mat_listbox.delete(0, tk.END)
         for i, mat in enumerate(self.materials):
-            pos_str = ", ".join([f"({x},{y})" for x, y in mat.positions[:3]])
-            if len(mat.positions) > 3:
-                pos_str += "..."
-            self.mat_listbox.insert(tk.END, f"Material {i+1}: {pos_str} ({mat.n} cells)")
-    
-    def parse_positions(self, text):
-        """Parse position string like '(0,0), (1,0), (1,1)'"""
-        positions = []
-        # Remove spaces and split by parentheses
-        text = text.replace(" ", "")
-        pairs = text.split("),(")
-        
-        for pair in pairs:
-            pair = pair.strip("()")
-            if pair:
-                x, y = map(int, pair.split(","))
-                positions.append((x, y))
-        
-        if not positions:
-            raise ValueError("No positions provided")
-        
-        return positions
-    
-    def parse_constraint(self, text):
-        """Parse comma-separated integers"""
-        if not text.strip():
-            return []
-        return [int(x.strip()) for x in text.split(",")]
+            self.mat_listbox.insert(tk.END, f"Mat{i}: {len(mat.positions)} cells")
     
     def load_example(self):
-        """Load the example from main.py"""
         self.table_size.set(5)
         self.update_board_size()
         
@@ -414,250 +351,183 @@ class PentominoPuzzleGUI:
             Material([(0, 0), (1, 0), (2, 0), (2, -1)]),
             Material([(0, 0), (1, 0), (1, 1), (2, 1)])
         ]
+        
+        # Example constraints
+        self.xans = [5, 4, 3, 2, 1]
+        self.yans = [5, 4, 3, 2, 1]
+        
+        # Update display
         self.update_material_list()
+        self.create_grid()
         
-        # Example constraints - set spinbox values
-        example_xans = [5, 4, 3, 2, 1]
-        example_yans = [5, 4, 3, 2, 1]
+        messagebox.showinfo("Success", "Example loaded!")
+    
+    def clear_board(self):
+        """Clear initial board state"""
+        if messagebox.askyesno("Confirm Clear", "Clear the initial board state? This cannot be undone."):
+            n = self.table_size.get()
+            self.initial_board = [[0 for _ in range(n)] for _ in range(n)]
+            self.mode.set('edit')
+            self.update_grid_display()
+            messagebox.showinfo("Cleared", "Board cleared successfully")
+    
+    def clear_solution(self):
+        """Clear solution"""
+        if self.solution_board is None:
+            messagebox.showinfo("No Solution", "There is no solution to clear")
+            return
         
-        for i, val in enumerate(example_xans):
-            self.xans_vars[i].set(val)
-        
-        for i, val in enumerate(example_yans):
-            self.yans_vars[i].set(val)
-        
-        messagebox.showinfo("Success", "Example loaded successfully!")
+        if messagebox.askyesno("Confirm Clear", "Clear the current solution?"):
+            self.solution_board = None
+            self.mode.set('edit')
+            self.update_grid_display()
+            messagebox.showinfo("Cleared", "Solution cleared successfully")
     
     def solve_puzzle(self):
-        """Solve the puzzle with current settings"""
+        if not self.materials:
+            messagebox.showerror("Error", "Please add at least one material")
+            return
+        
+        # Create table
+        n = self.table_size.get()
+        table = Table(self.initial_board)
+        
+        # Redirect stdout to log
+        self.log_text.delete(1.0, tk.END)
+        log_stream = io.StringIO()
+        
         try:
-            # Clear previous results
-            self.log_text.delete(1.0, tk.END)
-            if self.canvas_widget:
-                self.canvas_widget.get_tk_widget().destroy()
-                self.canvas_widget = None
+            with redirect_stdout(log_stream):
+                result = table.eval(self.xans.copy(), self.yans.copy(), self.materials)
             
-            
-            # Get constraints from spinboxes
-            xans = [var.get() for var in self.xans_vars]
-            yans = [var.get() for var in self.yans_vars]
-            
-            n = self.table_size.get()
-            
-            if len(xans) != n or len(yans) != n:
-                messagebox.showerror("Error", f"Constraints must have {n} values each")
-                return
-            
-            if not self.materials:
-                messagebox.showerror("Error", "Please add at least one material")
-                return
-            
-            # Create table with initial board
-            table = Table(self.initial_board)
-            
-            # Redirect stdout to capture logs
-            log_capture = io.StringIO()
-            
-            with redirect_stdout(log_capture):
-                table.eval(xans, yans, self.materials)
-            
-            # Display logs
-            logs = log_capture.getvalue()
-            self.log_text.insert(tk.END, logs)
+            # Display log
+            self.log_text.insert(tk.END, log_stream.getvalue())
             self.log_text.see(tk.END)
             
-            # Display visualization
-            fig = table.visualize(xans, yans, show=False)
-            
-            if fig:
-                self.canvas_widget = FigureCanvasTkAgg(fig, master=self.viz_container)
-                self.canvas_widget.draw()
-                self.canvas_widget.get_tk_widget().grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-                
-                messagebox.showinfo("Success", "Puzzle solved! See visualization below.")
+            if result:
+                self.solution_board = result.internal
+                self.mode.set('result')
+                self.update_grid_display()
+                messagebox.showinfo("Success", "Solution found!")
             else:
-                messagebox.showwarning("No Solution", "No solution found for this puzzle.")
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to solve puzzle: {e}")
-            import traceback
-            self.log_text.insert(tk.END, f"\n\nError:\n{traceback.format_exc()}")
+                messagebox.showerror("No Solution", "No solution found")
 
-
-
-
-class MaterialDialog:
-    """Dialog for adding/editing materials with visual grid editor"""
-    def __init__(self, parent, title, initial_positions=None):
-        self.result = None
-        self.grid_size = tk.IntVar(value=5)
-        self.selected_cells = set()  # Set of (x, y) tuples
         
-        # Parse initial positions if provided
-        if initial_positions:
-            self.selected_cells = set(initial_positions)
+        except Exception as e:
+            self.log_text.insert(tk.END, f"\nError: {str(e)}\n")
+            messagebox.showerror("Error", str(e))
+
+
+class MaterialEditorDialog:
+    def __init__(self, parent, material, callback):
+        self.callback = callback
+        self.selected_cells = set()
+        
+        if material:
+            for x, y in material.positions:
+                self.selected_cells.add((x, y))
         
         # Create dialog
         self.dialog = tk.Toplevel(parent)
-        self.dialog.title(title)
-        self.dialog.geometry("600x700")
+        self.dialog.title("Material Editor")
+        self.dialog.geometry("450x500")
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
         self.setup_ui()
-        self.draw_grid()
-        
-        self.dialog.wait_window()
     
     def setup_ui(self):
-        """Setup the dialog UI"""
-        # Top frame - Grid size control
+        # Grid size control
         top_frame = ttk.Frame(self.dialog, padding="10")
         top_frame.pack(fill=tk.X)
         
         ttk.Label(top_frame, text="Grid Size:").pack(side=tk.LEFT, padx=5)
-        size_spinbox = ttk.Spinbox(top_frame, from_=3, to=15, textvariable=self.grid_size, 
-                                   width=10, command=self.on_size_change)
-        size_spinbox.pack(side=tk.LEFT, padx=5)
+        self.grid_size = tk.IntVar(value=5)
+        ttk.Spinbox(top_frame, from_=3, to=10, textvariable=self.grid_size, 
+                   width=5, command=self.draw_grid).pack(side=tk.LEFT, padx=5)
         
-        ttk.Label(top_frame, text="(Click cells to add/remove)", 
-                 font=('Arial', 9, 'italic')).pack(side=tk.LEFT, padx=20)
+        # Canvas
+        self.canvas = tk.Canvas(self.dialog, width=400, height=400, bg='white')
+        self.canvas.pack(pady=10)
+        self.canvas.bind('<Button-1>', self.on_canvas_click)
         
-        # Middle frame - Canvas for grid
-        canvas_frame = ttk.Frame(self.dialog, padding="10")
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.canvas = tk.Canvas(canvas_frame, width=500, height=500, bg='white', 
-                               highlightthickness=1, highlightbackground='gray')
-        self.canvas.pack()
-        self.canvas.bind("<Button-1>", self.on_canvas_click)
-        
-        # Info frame - Show selected positions
+        # Selected cells display
         info_frame = ttk.Frame(self.dialog, padding="10")
         info_frame.pack(fill=tk.X)
         
-        ttk.Label(info_frame, text="Selected cells:").pack(side=tk.LEFT)
-        self.info_label = ttk.Label(info_frame, text="None", foreground='blue')
-        self.info_label.pack(side=tk.LEFT, padx=5)
+        ttk.Label(info_frame, text="Selected:").pack(side=tk.LEFT)
+        self.selected_label = ttk.Label(info_frame, text="None")
+        self.selected_label.pack(side=tk.LEFT, padx=5)
         
-        # Button frame
+        # Buttons
         btn_frame = ttk.Frame(self.dialog, padding="10")
         btn_frame.pack(fill=tk.X)
         
-        ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="OK", command=self.on_ok).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=self.on_cancel).pack(side=tk.RIGHT, padx=5)
-    
-    def on_size_change(self):
-        """Handle grid size change"""
-        # Clear selections that are out of bounds
-        new_size = self.grid_size.get()
-        self.selected_cells = {(x, y) for x, y in self.selected_cells 
-                              if -new_size < x < new_size and -new_size < y < new_size}
+        ttk.Button(btn_frame, text="Clear", command=self.clear_selection).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Cancel", command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="Save", command=self.save_material).pack(side=tk.RIGHT, padx=5)
+        
         self.draw_grid()
     
     def draw_grid(self):
-        """Draw the material editor grid"""
         self.canvas.delete("all")
         size = self.grid_size.get()
-        canvas_size = 500
-        cell_size = canvas_size // size
+        cell_size = 400 // size
         
-        # Draw grid cells
-        for row in range(size):
-            for col in range(size):
-                x1 = col * cell_size
-                y1 = row * cell_size
+        for r in range(size):
+            for c in range(size):
+                x1 = c * cell_size
+                y1 = r * cell_size
                 x2 = x1 + cell_size
                 y2 = y1 + cell_size
                 
-                # Convert canvas coordinates to material coordinates
-                # Material uses (x, y) where (0, 0) is at center-ish
-                # We'll use bottom-left as origin for simplicity
-                mat_x = col
-                mat_y = size - 1 - row  # Flip Y axis
-                
-                # Check if this cell is selected
-                is_selected = (mat_x, mat_y) in self.selected_cells
-                
-                color = '#4CAF50' if is_selected else 'white'
-                
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, 
-                                            outline='gray', width=1)
-                
-                # Draw coordinate label
-                label = f"{mat_x},{mat_y}"
-                text_color = 'white' if is_selected else 'gray'
-                self.canvas.create_text((x1 + x2) // 2, (y1 + y2) // 2, 
-                                       text=label, fill=text_color, 
-                                       font=('Arial', 8))
+                fill = '#4CAF50' if (c, r) in self.selected_cells else 'white'
+                self.canvas.create_rectangle(x1, y1, x2, y2, fill=fill, outline='black')
+                self.canvas.create_text(x1 + cell_size//2, y1 + cell_size//2, 
+                                       text=f"{c},{r}", font=('Arial', 8))
         
-        self.update_info()
+        self.update_selected_label()
     
     def on_canvas_click(self, event):
-        """Handle click on canvas"""
         size = self.grid_size.get()
-        canvas_size = 500
-        cell_size = canvas_size // size
+        cell_size = 400 // size
         
-        col = event.x // cell_size
-        row = event.y // cell_size
+        c = event.x // cell_size
+        r = event.y // cell_size
         
-        if 0 <= col < size and 0 <= row < size:
-            # Convert to material coordinates
-            mat_x = col
-            mat_y = size - 1 - row
-            
-            # Toggle selection
-            if (mat_x, mat_y) in self.selected_cells:
-                self.selected_cells.remove((mat_x, mat_y))
+        if 0 <= c < size and 0 <= r < size:
+            if (c, r) in self.selected_cells:
+                self.selected_cells.remove((c, r))
             else:
-                self.selected_cells.add((mat_x, mat_y))
+                self.selected_cells.add((c, r))
             
             self.draw_grid()
     
-    def update_info(self):
-        """Update the info label with selected positions"""
-        if not self.selected_cells:
-            self.info_label.config(text="None (click cells to add)")
-        else:
-            # Normalize positions to start from (0, 0)
-            positions = self.normalize_positions(list(self.selected_cells))
-            pos_str = ", ".join([f"({x},{y})" for x, y in sorted(positions)[:5]])
-            if len(positions) > 5:
-                pos_str += "..."
-            self.info_label.config(text=f"{len(positions)} cells - {pos_str}")
-    
-    def normalize_positions(self, positions):
-        """Normalize positions so minimum x and y are 0"""
-        if not positions:
-            return []
-        
-        min_x = min(x for x, y in positions)
-        min_y = min(y for x, y in positions)
-        
-        return [(x - min_x, y - min_y) for x, y in positions]
-    
-    def clear_all(self):
-        """Clear all selected cells"""
+    def clear_selection(self):
         self.selected_cells.clear()
         self.draw_grid()
     
-    def on_ok(self):
-        """OK button handler"""
+    def update_selected_label(self):
+        if self.selected_cells:
+            cells = sorted(list(self.selected_cells))
+            self.selected_label.config(text=str(cells))
+        else:
+            self.selected_label.config(text="None")
+    
+    def save_material(self):
         if not self.selected_cells:
-            messagebox.showwarning("Warning", "Please select at least one cell")
+            messagebox.showwarning("Empty Material", "Please select at least one cell")
             return
         
-        # Normalize and return positions
-        self.result = self.normalize_positions(list(self.selected_cells))
+        # Normalize positions
+        positions = list(self.selected_cells)
+        min_x = min(x for x, y in positions)
+        min_y = min(y for x, y in positions)
+        normalized = [(x - min_x, y - min_y) for x, y in positions]
+        
+        material = Material(normalized)
+        self.callback(material)
         self.dialog.destroy()
-    
-    def on_cancel(self):
-        """Cancel button handler"""
-        self.result = None
-        self.dialog.destroy()
-
 
 
 def main():
