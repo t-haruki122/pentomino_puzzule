@@ -247,20 +247,24 @@ class PentominoPuzzleGUI:
         
         widget.bind("<MouseWheel>", on_wheel)
         
-        # Drag support
-        drag_data = {'y': 0, 'start_val': 0}
+        # Drag support with click detection
+        drag_data = {'y': 0, 'start_val': 0, 'dragged': False}
         
         def on_drag_start(event):
             drag_data['y'] = event.y
             drag_data['start_val'] = var.get()
+            drag_data['dragged'] = False
             widget.config(bg='#FFEB3B', relief=tk.SUNKEN)  # Yellow highlight during drag
         
         def on_drag_motion(event):
-            delta_y = drag_data['y'] - event.y  # Inverted: up = positive
-            steps = delta_y // 10  # 10 pixels per step
-            new_val = drag_data['start_val'] + steps
-            new_val = max(0, min(new_val, max_val))
-            var.set(new_val)
+            # If mouse moved more than 3 pixels, it's a drag
+            if abs(event.y - drag_data['y']) > 3:
+                drag_data['dragged'] = True
+                delta_y = drag_data['y'] - event.y  # Inverted: up = positive
+                steps = delta_y // 10  # 10 pixels per step
+                new_val = drag_data['start_val'] + steps
+                new_val = max(0, min(new_val, max_val))
+                var.set(new_val)
         
         def on_drag_end(event):
             # Restore original color based on which constraint this is
@@ -268,10 +272,24 @@ class PentominoPuzzleGUI:
                 widget.config(bg='#E3F2FD', relief=tk.RAISED)
             else:
                 widget.config(bg='#E8F5E9', relief=tk.RAISED)
+            
+            # If not dragged, it's a click - increment value
+            if not drag_data['dragged']:
+                current = var.get()
+                if current < max_val:
+                    var.set(current + 1)
+        
+        # Right-click to decrement
+        def on_right_click(event):
+            current = var.get()
+            if current > 0:
+                var.set(current - 1)
         
         widget.bind("<Button-1>", on_drag_start)
         widget.bind("<B1-Motion>", on_drag_motion)
         widget.bind("<ButtonRelease-1>", on_drag_end)
+        widget.bind("<Button-3>", on_right_click)  # Right-click
+
         
         # Hover effect
         def on_enter(event):
