@@ -553,8 +553,14 @@ class MaterialEditorDialog:
         
         ttk.Label(top_frame, text="Grid Size:").pack(side=tk.LEFT, padx=5)
         self.grid_size = tk.IntVar(value=5)
-        ttk.Spinbox(top_frame, from_=3, to=10, textvariable=self.grid_size, 
-                   width=5, command=self.draw_grid).pack(side=tk.LEFT, padx=5)
+        
+        # Interactive grid size button
+        self.grid_size_display = tk.Button(top_frame, text=str(self.grid_size.get()),
+                                          width=4, font=('Arial', 10, 'bold'),
+                                          bg='white', fg='black',
+                                          relief=tk.RAISED, bd=2)
+        self.grid_size_display.pack(side=tk.LEFT, padx=5)
+        self.setup_grid_size_events()
         
         # Canvas
         self.canvas = tk.Canvas(self.dialog, width=400, height=400, bg='white')
@@ -578,6 +584,59 @@ class MaterialEditorDialog:
         ttk.Button(btn_frame, text="Cancel", command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Save", command=self.save_material).pack(side=tk.RIGHT, padx=5)
         
+        self.draw_grid()
+    
+    def setup_grid_size_events(self):
+        """Setup interactive events for grid size button"""
+        drag_data = {'y': 0, 'start_val': 0, 'dragged': False}
+        
+        # Mouse wheel
+        def on_wheel(event):
+            delta = 1 if event.delta > 0 else -1
+            new_val = max(3, min(self.grid_size.get() + delta, 10))
+            self.set_grid_size(new_val)
+        
+        self.grid_size_display.bind('<MouseWheel>', on_wheel)
+        
+        # Drag
+        def on_drag_start(event):
+            drag_data['y'] = event.y
+            drag_data['start_val'] = self.grid_size.get()
+            drag_data['dragged'] = False
+            self.grid_size_display.config(bg='#FFEB3B')
+        
+        def on_drag_motion(event):
+            if abs(event.y - drag_data['y']) > 3:
+                drag_data['dragged'] = True
+                delta_y = drag_data['y'] - event.y
+                steps = delta_y // 10
+                new_val = max(3, min(drag_data['start_val'] + steps, 10))
+                self.set_grid_size(new_val)
+        
+        def on_drag_end(event):
+            self.grid_size_display.config(bg='white')
+            
+            # If not dragged, it's a click - increment
+            if not drag_data['dragged']:
+                new_val = min(self.grid_size.get() + 1, 10)
+                if new_val > 10:
+                    new_val = 3  # Wrap around
+                self.set_grid_size(new_val)
+        
+        # Right-click to decrement
+        def on_right_click(event):
+            new_val = max(self.grid_size.get() - 1, 3)
+            self.set_grid_size(new_val)
+        
+        self.grid_size_display.bind('<Button-1>', on_drag_start)
+        self.grid_size_display.bind('<B1-Motion>', on_drag_motion)
+        self.grid_size_display.bind('<ButtonRelease-1>', on_drag_end)
+        self.grid_size_display.bind('<Button-3>', on_right_click)
+    
+    def set_grid_size(self, size):
+        """Set grid size and redraw"""
+        self.grid_size.set(size)
+        self.grid_size_display.config(text=str(size))
         self.draw_grid()
     
     def draw_grid(self):
