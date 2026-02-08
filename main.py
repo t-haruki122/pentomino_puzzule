@@ -250,7 +250,7 @@ class Table:
                     self.set(px + opt['dx'], py + opt['dy'], val)
 
             # --- ここで可視化を呼び出し ---
-            self.visualize(xans, yans)
+            # self.visualize(xans, yans)
         else:
             print("No solution found.")
 
