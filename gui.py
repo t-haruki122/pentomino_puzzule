@@ -198,8 +198,7 @@ class PentominoPuzzleGUI:
         dialog = MaterialDialog(self.root, "Add Material")
         if dialog.result:
             try:
-                positions = self.parse_positions(dialog.result)
-                mat = Material(positions)
+                mat = Material(dialog.result)
                 self.materials.append(mat)
                 self.update_material_list()
             except Exception as e:
@@ -214,13 +213,11 @@ class PentominoPuzzleGUI:
         
         idx = selection[0]
         current_mat = self.materials[idx]
-        current_str = ", ".join([f"({x},{y})" for x, y in current_mat.positions])
         
-        dialog = MaterialDialog(self.root, "Edit Material", current_str)
+        dialog = MaterialDialog(self.root, "Edit Material", current_mat.positions)
         if dialog.result:
             try:
-                positions = self.parse_positions(dialog.result)
-                self.materials[idx] = Material(positions)
+                self.materials[idx] = Material(dialog.result)
                 self.update_material_list()
             except Exception as e:
                 messagebox.showerror("Error", f"Invalid material format: {e}")
@@ -347,45 +344,180 @@ class PentominoPuzzleGUI:
             self.log_text.insert(tk.END, f"\n\nError:\n{traceback.format_exc()}")
 
 
+
+
 class MaterialDialog:
-    """Dialog for adding/editing materials"""
-    def __init__(self, parent, title, initial_value=""):
+    """Dialog for adding/editing materials with visual grid editor"""
+    def __init__(self, parent, title, initial_positions=None):
         self.result = None
+        self.grid_size = tk.IntVar(value=5)
+        self.selected_cells = set()  # Set of (x, y) tuples
         
-        dialog = tk.Toplevel(parent)
-        dialog.title(title)
-        dialog.geometry("400x200")
-        dialog.transient(parent)
-        dialog.grab_set()
+        # Parse initial positions if provided
+        if initial_positions:
+            self.selected_cells = set(initial_positions)
         
-        # Instructions
-        ttk.Label(dialog, text="Enter positions as (x,y) pairs, comma-separated:").pack(pady=10)
-        ttk.Label(dialog, text="Example: (0,0), (1,0), (1,1)", font=('Arial', 9, 'italic')).pack()
+        # Create dialog
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title(title)
+        self.dialog.geometry("600x700")
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
         
-        # Entry
-        entry = ttk.Entry(dialog, width=50)
-        entry.pack(pady=10, padx=10)
-        entry.insert(0, initial_value)
-        entry.focus()
+        self.setup_ui()
+        self.draw_grid()
         
-        # Buttons
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=10)
+        self.dialog.wait_window()
+    
+    def setup_ui(self):
+        """Setup the dialog UI"""
+        # Top frame - Grid size control
+        top_frame = ttk.Frame(self.dialog, padding="10")
+        top_frame.pack(fill=tk.X)
         
-        def on_ok():
-            self.result = entry.get()
-            dialog.destroy()
+        ttk.Label(top_frame, text="Grid Size:").pack(side=tk.LEFT, padx=5)
+        size_spinbox = ttk.Spinbox(top_frame, from_=3, to=15, textvariable=self.grid_size, 
+                                   width=10, command=self.on_size_change)
+        size_spinbox.pack(side=tk.LEFT, padx=5)
         
-        def on_cancel():
-            dialog.destroy()
+        ttk.Label(top_frame, text="(Click cells to add/remove)", 
+                 font=('Arial', 9, 'italic')).pack(side=tk.LEFT, padx=20)
         
-        ttk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        # Middle frame - Canvas for grid
+        canvas_frame = ttk.Frame(self.dialog, padding="10")
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Bind Enter key
-        entry.bind("<Return>", lambda e: on_ok())
+        self.canvas = tk.Canvas(canvas_frame, width=500, height=500, bg='white', 
+                               highlightthickness=1, highlightbackground='gray')
+        self.canvas.pack()
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
         
-        dialog.wait_window()
+        # Info frame - Show selected positions
+        info_frame = ttk.Frame(self.dialog, padding="10")
+        info_frame.pack(fill=tk.X)
+        
+        ttk.Label(info_frame, text="Selected cells:").pack(side=tk.LEFT)
+        self.info_label = ttk.Label(info_frame, text="None", foreground='blue')
+        self.info_label.pack(side=tk.LEFT, padx=5)
+        
+        # Button frame
+        btn_frame = ttk.Frame(self.dialog, padding="10")
+        btn_frame.pack(fill=tk.X)
+        
+        ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="OK", command=self.on_ok).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="Cancel", command=self.on_cancel).pack(side=tk.RIGHT, padx=5)
+    
+    def on_size_change(self):
+        """Handle grid size change"""
+        # Clear selections that are out of bounds
+        new_size = self.grid_size.get()
+        self.selected_cells = {(x, y) for x, y in self.selected_cells 
+                              if -new_size < x < new_size and -new_size < y < new_size}
+        self.draw_grid()
+    
+    def draw_grid(self):
+        """Draw the material editor grid"""
+        self.canvas.delete("all")
+        size = self.grid_size.get()
+        canvas_size = 500
+        cell_size = canvas_size // size
+        
+        # Draw grid cells
+        for row in range(size):
+            for col in range(size):
+                x1 = col * cell_size
+                y1 = row * cell_size
+                x2 = x1 + cell_size
+                y2 = y1 + cell_size
+                
+                # Convert canvas coordinates to material coordinates
+                # Material uses (x, y) where (0, 0) is at center-ish
+                # We'll use bottom-left as origin for simplicity
+                mat_x = col
+                mat_y = size - 1 - row  # Flip Y axis
+                
+                # Check if this cell is selected
+                is_selected = (mat_x, mat_y) in self.selected_cells
+                
+                color = '#4CAF50' if is_selected else 'white'
+                
+                self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, 
+                                            outline='gray', width=1)
+                
+                # Draw coordinate label
+                label = f"{mat_x},{mat_y}"
+                text_color = 'white' if is_selected else 'gray'
+                self.canvas.create_text((x1 + x2) // 2, (y1 + y2) // 2, 
+                                       text=label, fill=text_color, 
+                                       font=('Arial', 8))
+        
+        self.update_info()
+    
+    def on_canvas_click(self, event):
+        """Handle click on canvas"""
+        size = self.grid_size.get()
+        canvas_size = 500
+        cell_size = canvas_size // size
+        
+        col = event.x // cell_size
+        row = event.y // cell_size
+        
+        if 0 <= col < size and 0 <= row < size:
+            # Convert to material coordinates
+            mat_x = col
+            mat_y = size - 1 - row
+            
+            # Toggle selection
+            if (mat_x, mat_y) in self.selected_cells:
+                self.selected_cells.remove((mat_x, mat_y))
+            else:
+                self.selected_cells.add((mat_x, mat_y))
+            
+            self.draw_grid()
+    
+    def update_info(self):
+        """Update the info label with selected positions"""
+        if not self.selected_cells:
+            self.info_label.config(text="None (click cells to add)")
+        else:
+            # Normalize positions to start from (0, 0)
+            positions = self.normalize_positions(list(self.selected_cells))
+            pos_str = ", ".join([f"({x},{y})" for x, y in sorted(positions)[:5]])
+            if len(positions) > 5:
+                pos_str += "..."
+            self.info_label.config(text=f"{len(positions)} cells - {pos_str}")
+    
+    def normalize_positions(self, positions):
+        """Normalize positions so minimum x and y are 0"""
+        if not positions:
+            return []
+        
+        min_x = min(x for x, y in positions)
+        min_y = min(y for x, y in positions)
+        
+        return [(x - min_x, y - min_y) for x, y in positions]
+    
+    def clear_all(self):
+        """Clear all selected cells"""
+        self.selected_cells.clear()
+        self.draw_grid()
+    
+    def on_ok(self):
+        """OK button handler"""
+        if not self.selected_cells:
+            messagebox.showwarning("Warning", "Please select at least one cell")
+            return
+        
+        # Normalize and return positions
+        self.result = self.normalize_positions(list(self.selected_cells))
+        self.dialog.destroy()
+    
+    def on_cancel(self):
+        """Cancel button handler"""
+        self.result = None
+        self.dialog.destroy()
+
 
 
 def main():
