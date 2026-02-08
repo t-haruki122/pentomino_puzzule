@@ -34,6 +34,9 @@ class PentominoPuzzleGUI:
         
         self.setup_ui()
         self.update_board_size()
+        
+        # Hidden shortcut for Load Example (Ctrl+L)
+        self.root.bind('<Control-l>', lambda e: self.load_example())
     
     def setup_ui(self):
         # Main container
@@ -45,9 +48,14 @@ class PentominoPuzzleGUI:
         main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(1, weight=1)
         
-        # Top panel - Controls
+        # Top panel - Controls (with background color)
         top_panel = ttk.Frame(main_frame, padding="5")
         top_panel.grid(row=0, column=0, sticky=(tk.W, tk.E))
+        top_panel.configure(style='Header.TFrame')
+        
+        # Configure style for header
+        style = ttk.Style()
+        style.configure('Header.TFrame', background='#e0e0e0')
         
         # Grid panel - Interactive grid
         grid_panel = ttk.Frame(main_frame, padding="5")
@@ -68,44 +76,56 @@ class PentominoPuzzleGUI:
         
         # Table Size
         ttk.Label(left_frame, text="Size:").grid(row=0, column=0, padx=5)
-        size_spinbox = ttk.Spinbox(left_frame, from_=3, to=10, textvariable=self.table_size, 
-                                   width=5, command=self.update_board_size)
-        size_spinbox.grid(row=0, column=1, padx=5)
+        
+        # Table Size - Interactive button
+        self.size_display = tk.Button(left_frame, text=str(self.table_size.get()),
+                                     width=4, font=('Arial', 10, 'bold'),
+                                     bg='white', fg='black',
+                                     relief=tk.RAISED, bd=2)
+        self.size_display.grid(row=0, column=1, padx=5)
+        self.setup_size_events()
         
         # Materials
         ttk.Label(left_frame, text="Materials:").grid(row=0, column=2, padx=5)
         self.mat_listbox = tk.Listbox(left_frame, height=3, width=30)
         self.mat_listbox.grid(row=0, column=3, padx=5)
+        self.mat_listbox.bind('<Delete>', lambda e: self.delete_material())
         
         ttk.Button(left_frame, text="Add", command=self.add_material, width=6).grid(row=0, column=4, padx=2)
         ttk.Button(left_frame, text="Edit", command=self.edit_material, width=6).grid(row=0, column=5, padx=2)
-        ttk.Button(left_frame, text="Del", command=self.delete_material, width=6).grid(row=0, column=6, padx=2)
         
         # Right side - Action buttons
         right_frame = ttk.Frame(parent)
         right_frame.grid(row=0, column=1, sticky=(tk.E))
         parent.columnconfigure(1, weight=1)
         
-        ttk.Button(right_frame, text="Load Example", command=self.load_example).grid(row=0, column=0, padx=5)
-        ttk.Button(right_frame, text="Clear Board", command=self.clear_board).grid(row=0, column=1, padx=5)
-        ttk.Button(right_frame, text="Clear Solution", command=self.clear_solution).grid(row=0, column=2, padx=5)
-        
         # Mode toggle
-        ttk.Label(right_frame, text="Mode:").grid(row=0, column=3, padx=5)
+        ttk.Label(right_frame, text="Mode:").grid(row=0, column=0, padx=5)
         mode_edit = ttk.Radiobutton(right_frame, text="Edit", variable=self.mode, value='edit', 
                                     command=self.update_grid_display)
-        mode_edit.grid(row=0, column=4, padx=2)
+        mode_edit.grid(row=0, column=1, padx=2)
         mode_result = ttk.Radiobutton(right_frame, text="Result", variable=self.mode, value='result',
                                       command=self.update_grid_display)
-        mode_result.grid(row=0, column=5, padx=2)
+        mode_result.grid(row=0, column=2, padx=2)
         
         ttk.Button(right_frame, text="Solve Puzzle", command=self.solve_puzzle, 
-                  style='Accent.TButton').grid(row=0, column=6, padx=5)
+                  style='Accent.TButton').grid(row=0, column=3, padx=5)
     
     def setup_grid_panel(self, parent):
-        # Create frame for grid
-        self.grid_frame = ttk.Frame(parent)
+        # Create main container
+        container = ttk.Frame(parent)
+        container.pack(expand=True, fill=tk.BOTH)
+        
+        # Grid frame
+        self.grid_frame = ttk.Frame(container)
         self.grid_frame.pack(expand=True)
+        
+        # Button frame (bottom-right)
+        self.grid_button_frame = ttk.Frame(container)
+        self.grid_button_frame.pack(side=tk.BOTTOM, anchor=tk.E, padx=10, pady=5)
+        
+        ttk.Button(self.grid_button_frame, text="Reset All", 
+                  command=self.reset_all).pack(side=tk.LEFT, padx=5)
     
     def setup_bottom_panel(self, parent):
         # Log output
@@ -137,8 +157,8 @@ class PentominoPuzzleGUI:
         # X constraints (top row)
         for c in range(n):
             btn = tk.Button(self.grid_frame, text=str(self.xans[c]), 
-                           width=btn_size//7, height=btn_size//14,
-                           bg='#E3F2FD', fg='#1976D2', font=('Arial', 10, 'bold'),
+                           width=6, height=2,
+                           bg='#E3F2FD', fg='#1976D2', font=('Arial', 12, 'bold'),
                            relief=tk.RAISED, bd=2)
             btn.grid(row=0, column=c+1, padx=1, pady=1)
             
@@ -150,8 +170,8 @@ class PentominoPuzzleGUI:
         for r in range(n):
             # Y constraint
             btn = tk.Button(self.grid_frame, text=str(self.yans[r]), 
-                           width=btn_size//7, height=btn_size//14,
-                           bg='#E8F5E9', fg='#388E3C', font=('Arial', 10, 'bold'),
+                           width=6, height=2,
+                           bg='#E8F5E9', fg='#388E3C', font=('Arial', 12, 'bold'),
                            relief=tk.RAISED, bd=2)
             btn.grid(row=r+1, column=0, padx=1, pady=1)
             
@@ -162,8 +182,8 @@ class PentominoPuzzleGUI:
             # Grid cells
             for c in range(n):
                 cell_btn = tk.Button(self.grid_frame, text="", 
-                                    width=btn_size//7, height=btn_size//14,
-                                    bg='white', font=('Arial', 9),
+                                    width=6, height=2,
+                                    bg='white', font=('Arial', 11, 'bold'),
                                     relief=tk.RAISED, bd=2)
                 cell_btn.grid(row=r+1, column=c+1, padx=1, pady=1)
                 
@@ -173,6 +193,53 @@ class PentominoPuzzleGUI:
                 self.grid_buttons[(r, c)] = cell_btn
         
         self.update_grid_display()
+    
+    def setup_size_events(self):
+        """Setup interactive events for size button"""
+        drag_data = {'y': 0, 'start_val': 0, 'dragged': False}
+        
+        # Mouse wheel
+        def on_wheel(event):
+            delta = 1 if event.delta > 0 else -1
+            new_val = max(3, min(self.table_size.get() + delta, 10))
+            self.set_table_size(new_val)
+        
+        self.size_display.bind('<MouseWheel>', on_wheel)
+        
+        # Drag
+        def on_drag_start(event):
+            drag_data['y'] = event.y
+            drag_data['start_val'] = self.table_size.get()
+            drag_data['dragged'] = False
+            self.size_display.config(bg='#FFEB3B')
+        
+        def on_drag_motion(event):
+            if abs(event.y - drag_data['y']) > 3:
+                drag_data['dragged'] = True
+                delta_y = drag_data['y'] - event.y
+                steps = delta_y // 10
+                new_val = max(3, min(drag_data['start_val'] + steps, 10))
+                self.set_table_size(new_val)
+        
+        def on_drag_end(event):
+            self.size_display.config(bg='white')
+            
+            # If not dragged, it's a click - increment
+            if not drag_data['dragged']:
+                new_val = min(self.table_size.get() + 1, 10)
+                if new_val > 10:
+                    new_val = 3  # Wrap around
+                self.set_table_size(new_val)
+        
+        # Right-click to decrement
+        def on_right_click(event):
+            new_val = max(self.table_size.get() - 1, 3)
+            self.set_table_size(new_val)
+        
+        self.size_display.bind('<Button-1>', on_drag_start)
+        self.size_display.bind('<B1-Motion>', on_drag_motion)
+        self.size_display.bind('<ButtonRelease-1>', on_drag_end)
+        self.size_display.bind('<Button-3>', on_right_click)
     
     def setup_constraint_events(self, button, index, constraint_type):
         n = self.table_size.get()
@@ -264,7 +331,7 @@ class PentominoPuzzleGUI:
                              '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b',
                              '#27ae60', '#2980b9', '#8e44ad', '#f1c40f', '#d35400']
                     color = colors[val % len(colors)]
-                    button.config(text=str(val), bg=color, fg='white', font=('Arial', 9, 'bold'))
+                    button.config(text=str(val), bg=color, fg='white', font=('Arial', 11, 'bold'))
             else:
                 button.config(text="", bg='white', fg='black')
     
@@ -273,6 +340,12 @@ class PentominoPuzzleGUI:
         for r in range(n):
             for c in range(n):
                 self.update_cell_display(r, c)
+    
+    def set_table_size(self, size):
+        """Set table size and update grid"""
+        self.table_size.set(size)
+        self.size_display.config(text=str(size))
+        self.update_board_size()
     
     def update_board_size(self):
         n = self.table_size.get()
@@ -314,7 +387,9 @@ class PentominoPuzzleGUI:
         
         index = selection[0]
         material = self.materials[index]
-        MaterialEditorDialog(self.root, material, lambda m: self.on_material_edited(index, m))
+        MaterialEditorDialog(self.root, material, 
+                           lambda m: self.on_material_edited(index, m),
+                           lambda: self.on_material_deleted(index))
     
     def delete_material(self):
         selection = self.mat_listbox.curselection()
@@ -333,6 +408,11 @@ class PentominoPuzzleGUI:
     
     def on_material_edited(self, index, material):
         self.materials[index] = material
+        self.update_material_list()
+    
+    def on_material_deleted(self, index):
+        """Called when material is deleted from editor"""
+        del self.materials[index]
         self.update_material_list()
     
     def update_material_list(self):
@@ -361,6 +441,35 @@ class PentominoPuzzleGUI:
         self.create_grid()
         
         messagebox.showinfo("Success", "Example loaded!")
+    
+    def reset_all(self):
+        """Reset all settings to initial state"""
+        if messagebox.askyesno("Confirm Reset", "Reset all settings (materials, size, constraints, board)? This cannot be undone."):
+            # Reset materials
+            self.materials = []
+            self.update_material_list()
+            
+            # Reset size to default
+            self.set_table_size(5)
+            
+            # Reset constraints
+            n = self.table_size.get()
+            self.xans = [0] * n
+            self.yans = [0] * n
+            
+            # Reset board
+            self.initial_board = [[0 for _ in range(n)] for _ in range(n)]
+            
+            # Reset solution
+            self.solution_board = None
+            
+            # Switch to edit mode
+            self.mode.set('edit')
+            
+            # Recreate grid
+            self.create_grid()
+            
+            messagebox.showinfo("Reset Complete", "All settings have been reset to initial values")
     
     def clear_board(self):
         """Clear initial board state"""
@@ -419,8 +528,9 @@ class PentominoPuzzleGUI:
 
 
 class MaterialEditorDialog:
-    def __init__(self, parent, material, callback):
+    def __init__(self, parent, material, callback, delete_callback=None):
         self.callback = callback
+        self.delete_callback = delete_callback
         self.selected_cells = set()
         
         if material:
@@ -430,7 +540,7 @@ class MaterialEditorDialog:
         # Create dialog
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Material Editor")
-        self.dialog.geometry("450x500")
+        self.dialog.geometry("500x600")
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
@@ -464,6 +574,7 @@ class MaterialEditorDialog:
         btn_frame.pack(fill=tk.X)
         
         ttk.Button(btn_frame, text="Clear", command=self.clear_selection).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Delete Material", command=self.delete_current).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Save", command=self.save_material).pack(side=tk.RIGHT, padx=5)
         
@@ -528,6 +639,16 @@ class MaterialEditorDialog:
         material = Material(normalized)
         self.callback(material)
         self.dialog.destroy()
+    
+    def delete_current(self):
+        """Delete the current material being edited"""
+        if self.delete_callback is None:
+            messagebox.showinfo("Cannot Delete", "Cannot delete a new material that hasn't been saved yet")
+            return
+        
+        if messagebox.askyesno("Confirm Delete", "Delete this material?"):
+            self.delete_callback()
+            self.dialog.destroy()
 
 
 def main():
